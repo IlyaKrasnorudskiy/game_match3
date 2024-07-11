@@ -22,48 +22,59 @@ public class Tile : MonoBehaviour {
 		SFXManager.instance.PlaySFX(Clip.Select);
 	}
 
+	private IEnumerator ProcessMove(Tile otherTile) {
+    SwapSprite(otherTile.render);
+    yield return new WaitForSeconds(0.2f); // Задержка перед проверкой
+
+    bool matchFound = otherTile.ClearAllMatches() || ClearAllMatches();
+    if (!matchFound) {
+        SwapSprite(otherTile.render); // Возвращаем элементы на прежние места
+    } else {
+        GUIManager.instance.MoveCounter--; // Уменьшаем счетчик ходов только при успешном ходе
+    }
+
+    BoardManager.instance.IsShifting = false;
+}
+
 	private void Deselect() {
 		isSelected = false;
 		render.color = Color.white;
 		previousSelected = null;
 	}
 
-	void OnMouseDown() {
-		// Not Selectable conditions
-		if (render.sprite == null || BoardManager.instance.IsShifting) {
-			return;
-		}
+	public void OnMouseDown() {
+    if (render.sprite == null || BoardManager.instance.IsShifting) {
+        return;
+    }
 
-		if (isSelected) { // Is it already selected?
-			Deselect();
-		} else {
-			if (previousSelected == null) { // Is it the first tile selected?
-				Select();
-			} else {
-				if (GetAllAdjacentTiles().Contains(previousSelected.gameObject)) { // Is it an adjacent tile?
-					SwapSprite(previousSelected.render);
-					previousSelected.ClearAllMatches();
-					previousSelected.Deselect();
-					ClearAllMatches();
-				} else {
-					previousSelected.GetComponent<Tile>().Deselect();
-					Select();
-				}
-			}
-		}
-	}
+    if (isSelected) {
+        Deselect();
+    } else {
+        if (previousSelected == null) {
+            Select();
+        } else {
+            if (GetAllAdjacentTiles().Contains(previousSelected.gameObject)) {
+                BoardManager.instance.IsShifting = true;
+                StartCoroutine(ProcessMove(previousSelected));
+                previousSelected.Deselect();
+            } else {
+                previousSelected.GetComponent<Tile>().Deselect();
+                Select();
+            }
+        }
+    }
+}
 
-	public void SwapSprite(SpriteRenderer render2) {
-		if (render.sprite == render2.sprite) {
-			return;
-		}
+public void SwapSprite(SpriteRenderer render2) {
+    if (render.sprite == render2.sprite) {
+        return;
+    }
 
-		Sprite tempSprite = render2.sprite;
-		render2.sprite = render.sprite;
-		render.sprite = tempSprite;
-		SFXManager.instance.PlaySFX(Clip.Swap);
-		GUIManager.instance.MoveCounter--; // Add this line here
-	}
+    Sprite tempSprite = render2.sprite;
+    render2.sprite = render.sprite;
+    render.sprite = tempSprite;
+    SFXManager.instance.PlaySFX(Clip.Swap);
+}
 
 	private GameObject GetAdjacent(Vector2 castDir) {
 		RaycastHit2D hit = Physics2D.Raycast(transform.position, castDir);
@@ -91,31 +102,35 @@ public class Tile : MonoBehaviour {
 		return matchingTiles;
 	}
 
-	private void ClearMatch(Vector2[] paths) {
-		List<GameObject> matchingTiles = new List<GameObject>();
-		for (int i = 0; i < paths.Length; i++) { matchingTiles.AddRange(FindMatch(paths[i])); }
-		if (matchingTiles.Count >= 2) {
-			for (int i = 0; i < matchingTiles.Count; i++) {
-				matchingTiles[i].GetComponent<SpriteRenderer>().sprite = null;
-			}
-			matchFound = true;
-		}
-	}
+	private bool ClearMatch(Vector2[] paths) {
+    List<GameObject> matchingTiles = new List<GameObject>();
+    for (int i = 0; i < paths.Length; i++) {
+        matchingTiles.AddRange(FindMatch(paths[i]));
+    }
+    if (matchingTiles.Count >= 2) {
+        for (int i = 0; i < matchingTiles.Count; i++) {
+            matchingTiles[i].GetComponent<SpriteRenderer>().sprite = null;
+        }
+        return true;
+    }
+    return false;
+}
 
 	private bool matchFound = false;
-	public void ClearAllMatches() {
-		if (render.sprite == null)
-			return;
+	public bool ClearAllMatches() {
+    if (render.sprite == null) {
+        return false;
+    }
 
-		ClearMatch(new Vector2[2] { Vector2.left, Vector2.right });
-		ClearMatch(new Vector2[2] { Vector2.up, Vector2.down });
-		if (matchFound) {
-			render.sprite = null;
-			matchFound = false;
-			StopCoroutine(BoardManager.instance.FindNullTiles()); //Add this line
-			StartCoroutine(BoardManager.instance.FindNullTiles()); //Add this line
-			SFXManager.instance.PlaySFX(Clip.Clear);
-		}
-	}
+    bool matchFound = ClearMatch(new Vector2[2] { Vector2.left, Vector2.right }) || 
+                      ClearMatch(new Vector2[2] { Vector2.up, Vector2.down });
+    if (matchFound) {
+        render.sprite = null;
+        StopCoroutine(BoardManager.instance.FindNullTiles());
+        StartCoroutine(BoardManager.instance.FindNullTiles());
+        SFXManager.instance.PlaySFX(Clip.Clear);
+    }
+    return matchFound;
+}
 
 }
